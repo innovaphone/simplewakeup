@@ -1,0 +1,462 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<voicemail>
+	<function define="Settings">
+		<!-- Set the default language when '$_lang' is not given in URL -->
+		<assign out="$defaultlang" value="en"/>
+		<dbg string="Default Language: " string2="$defaultlang"/>
+		
+		<!-- Base URL for the 'innowakeup'-app -->
+		<assign out="$serviceurl" value="https://172.16.21.221/WakeUp/WakeUp/wakeupservice/"/>
+		<dbg string="Service URL: " string2="$serviceurl"/>
+		
+		<!-- WakeUp default Settings (will override the ones from the app) -->
+		<!-- Destination Name -->
+		<assign out="$defaultdestinationName" value=""/>
+		<dbg string="Default WakeUp Name: " string2="$defaultdestinationName"/>
+		<!-- Destination Number -->
+		<assign out="$defaultdestinationNumber" value=""/>
+		<dbg string="Default WakeUp Number: " string2="$defaultdestinationNumber"/>
+		
+		<!-- Number of Retries -->
+		<assign out="$defaultretry" value=""/>
+		<dbg string="Default Retry: " string2="$defaultretry"/>
+		<!-- TimeOut -->
+		<assign out="$defaultimeout" value="20"/>
+		<dbg string="Default TimeOut: " string2="$defaultimeout"/>
+	</function>
+		
+	<!-- Override the default setting -->
+	<function define="GetQueryStringParameters">
+		<!-- Destination Name -->
+		<if cond="$_destinationName">	
+			<assign out="$defaultdestinationName" value="$_destinationName"/>
+			<dbg string="Default WakeUp Name (via URL): " string2="$defaultdestinationName"/>
+		</if>
+		
+		<!-- Destination Number -->
+		<if cond="$_destinationNumber">	
+			<assign out="$defaultdestinationNumber" value="$_destinationNumber"/>
+			<dbg string="Default WakeUp Number (via URL): " string2="$defaultdestinationNumber"/>
+		</if>
+		
+		<!-- Number of Retries -->
+		<if cond="$_retry">	
+			<assign out="$defaultretry" value="$_retry"/>
+			<dbg string="Default Retry (via URL): " string2="$defaultretry"/>
+		</if>
+		
+		<!-- TimeOut -->
+		<if cond="$_timeout">	
+			<assign out="$defaultimeout" value="$_timeout"/>
+			<dbg string="Default TimeOut (via URL): " string2="$defaultimeout"/>
+		</if>
+	</function>
+
+	<!-- Get/Set the Language of the prompts -->
+	<function define="GetSetLanguage">
+		<if cond="$_lang">
+			<assign out="$lang" value="$_lang"/>
+		</if>
+		<else>
+			<assign out="$lang" value="$defaultlang"/>
+		</else>
+		<!-- Set the filenames of the prompts -->
+		<lib-strcat string="$lang" string2="_" out-string="$langprefix"/>
+		
+		<dbg string="Language: " string2="$lang"/>
+		<dbg string="Languageprefix: " string2="$langprefix"/>
+	</function>
+	
+	<!-- Prepare the base URL -->
+	<function define="PrepareBaseUrl">
+		<lib-enc string="$cgpncn" out-string="$cgpncnenc" type="url"/> 		
+	
+		<lib-strcat string="$serviceurl" string2="$cgpncnenc" out-string="$baseurl"/>
+		<lib-strcat string="$baseurl" string2="/" out-string="$baseurl"/>
+			
+		<lib-strcat string="$baseurl" string2="get" out-string="$baseurlget"/>
+		<lib-strcat string="$baseurlget" string2="/" out-string="$baseurlget"/>
+		<dbg string="Get URL: " string2="$baseurlget"/>
+		
+		<lib-strcat string="$baseurl" string2="config" out-string="$baseurlconfig"/>
+		<lib-strcat string="$baseurlconfig" string2="/" out-string="$baseurlconfig"/>
+		<dbg string="Config URL: " string2="$baseurlconfig"/>
+		
+		<lib-strcat string="$baseurl" string2="rem" out-string="$baseurlrem"/>
+		<lib-strcat string="$baseurlrem" string2="/" out-string="$baseurlrem"/>
+		<dbg string="Rem URL: " string2="$baseurlrem"/>
+		
+		<lib-strcat string="$baseurl" string2="add" out-string="$baseurladd"/>
+		<lib-strcat string="$baseurladd" string2="/" out-string="$baseurladd"/>
+		<dbg string="Add URL: " string2="$baseurladd"/>
+	</function>
+	
+		<!-- Get the Default settings from the App -->
+	<function define="GetAppDefaultSettings">
+		<exec url="$baseurlconfig" />
+		<dbg string="App Source Name: " string2="$appDestinationName"/>
+		<dbg string="App Source Number: " string2="$appDestinationNumber"/>
+		<dbg string="App Retry: " string2="$appRetry"/>
+		<dbg string="App Timeout: " string2="$appTimeout"/>
+	</function>
+	
+	<function define="MenuWithoutWakeUp">
+		<!-- Play that there's a WakeUp configured -->
+		<lib-strcat string="$langprefix" string2="count_0.g711a" out-string="$file"/>
+		<store-get root="$lang" name="$file" out-url="$ctrl" />
+		<pbx-prompt url="$ctrl" barge-in="false"/>	
+			
+		<event type="dtmf" block="false">
+			<pbx-getdtmfdigit out-dtmf="$dtmf" /> 
+			<switch var="$dtmf">
+				<case equal="1"> 
+					<assign out="$action" value="1"/>
+					<call name="AddWakeUp" />
+					<assign out="$menu-ok" value="true"/>
+				</case>
+				<default> <!-- wrong selection -> err -->
+					<store-get root="$lang" name="silence.g711a" out-url="$ctrl" /> 
+					<pbx-prompt url="$ctrl" repeat="false" /> 
+					<wait sec="2"/>
+					<pbx-disc /> 
+				</default>
+			</switch>
+		</event>
+		
+		<while notcond="$menu-ok">		
+			<!-- Play the Menu choices -->
+			<lib-strcat string="$langprefix" string2="to_configure_new-press1.g711a" out-string="$file"/>
+			<store-get root="$lang" name="$file" out-url="$ctrl" />
+			<pbx-prompt url="$ctrl" barge-in="false"/>
+			
+			<!-- Play some Silence -->
+			<store-get root="$lang" name="silence.g711a" out-url="$ctrl" /> 
+			<pbx-prompt url="$ctrl" sec="4" repeat="true" /> 
+		</while>
+	</function>
+	
+	<function define="MenuWithWakeUp">
+		<!-- Play that there's a WakeUp configured -->
+		<lib-strcat string="$langprefix" string2="count_1.g711a" out-string="$file"/>
+		<store-get root="$lang" name="$file" out-url="$ctrl" />
+		<pbx-prompt url="$ctrl" barge-in="false"/>	
+		
+		<!-- Get Information about the wakeup -->
+		<assign out="$wakeup_index" value="0"/>
+		<lib-strcat string="$baseurlget" string2="$wakeup_index" out-string="$urlget"/>
+		<lib-strcat string="$urlget" string2="/" out-string="$urlget"/>
+		<exec url="$urlget" />
+		
+		<event type="dtmf" block="false">
+			<pbx-getdtmfdigit out-dtmf="$dtmf" /> 
+			<switch var="$dtmf">
+				<case equal="3"> 
+					<assign out="$action" value="3"/>
+					
+					<call name="RemWakeUp" />
+					
+					<assign out="$menu-ok" value="true"/> 
+				</case>
+				<default> <!-- wrong selection -> err -->
+					<store-get root="$lang" name="silence.g711a" out-url="$ctrl" /> 
+					<pbx-prompt url="$ctrl" repeat="false" /> 
+					<wait sec="2"/>
+					<pbx-disc /> 
+				</default>
+			</switch>
+		</event>
+		
+		<while notcond="$menu-ok">		
+			<!-- Play 'WakeUp at' -->
+			<lib-strcat string="$langprefix" string2="current_wakeup_set_at.g711a" out-string="$file"/>
+			<store-get root="$lang" name="$file" out-url="$ctrl" />
+			<pbx-prompt url="$ctrl" barge-in="false"/>	
+			<!-- Play the WakeUp -->
+			<assign out="$playhour" value="$hour"/>
+			<assign out="$playmin" value="$min"/>
+			<call name="PlayWakeUp" />
+			
+			<!-- Play the Menu choices -->
+			<lib-strcat string="$langprefix" string2="to_remove-press3.g711a" out-string="$file"/>
+			<store-get root="$lang" name="$file" out-url="$ctrl" />
+			<pbx-prompt url="$ctrl" barge-in="false"/>
+			
+			<!-- Play some Silence -->
+			<store-get root="$lang" name="silence.g711a" out-url="$ctrl" /> 
+			<pbx-prompt url="$ctrl" sec="4" repeat="true" /> 
+		</while>
+	</function>
+	
+	<!-- Play the Wakeup Time -->
+	<function define="PlayWakeUp">
+		<!-- Play the Hour-part -->
+		<dbg string="Hour: " string2="$playhour" />
+		
+		<lib-strcat string="$langprefix" string2="$playhour" out-string="$file"/>
+		<lib-strcat string="$file" string2=".g711a" out-string="$file"/>
+		<store-get root="$lang" name="$file" out-url="$ctrl" />
+		<pbx-prompt url="$ctrl" barge-in="false"/>	
+		
+		<!-- Play the Minute-part -->
+		<dbg string="Min: " string2="$playmin" />
+		
+		<lib-strcat string="$langprefix" string2="$playmin" out-string="$file"/>
+		<lib-strcat string="$file" string2=".g711a" out-string="$file"/>
+		<store-get root="$lang" name="$file" out-url="$ctrl" />
+		<pbx-prompt url="$ctrl" barge-in="false"/>	
+	</function>
+	
+	<function define="AddWakeUp">
+		<assign out="$new-hour" value=""/> 
+		<assign out="$new-min" value=""/> 
+	
+		<call name="AskHour"/>
+		<call name="AskMinutes"/>
+		
+		<!-- Add the WakeUp -->
+		<lib-strcat string="$baseurladd" string2="$new-hour" out-string="$urladd"/> <!-- Add hour / param0 -->
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		
+		<lib-strcat string="$urladd" string2="$new-min" out-string="$urladd"/> <!-- Add minutes / param1 -->
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		
+		<lib-strcat string="$urladd" string2="0" out-string="$urladd"/> <!-- Add seconds / param2 -->
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		
+		<!-- Add destination name / param3 -->
+		<if cond="$defaultdestinationName">		
+			<lib-strcat string="$urladd" string2="$defaultdestinationName" out-string="$urladd"/> 
+		</if>
+		<else>
+			<if cond="$appDestinationName">	
+				<lib-strcat string="$urladd" string2="$appDestinationName" out-string="$urladd"/> 
+			</if>
+			<else>
+				<lib-strcat string="$urladd" string2="-" out-string="$urladd"/>
+			</else>
+		</else>
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		 
+		<!-- Add destination number / param4 -->
+		<if cond="$defaultdestinationNumber">
+			<lib-strcat string="$urladd" string2="$defaultdestinationNumber" out-string="$urladd"/> 
+		</if>
+		<else>
+			<if cond="$appDestinationNumber">	
+				<lib-strcat string="$urladd" string2="$appDestinationNumber" out-string="$urladd"/> 
+			</if>
+			<else>
+				<lib-strcat string="$urladd" string2="-" out-string="$urladd"/>
+			</else>
+		</else>
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>   
+		
+		<!-- Add retry / param5 -->
+		<if cond="$defaultretry">
+			<lib-strcat string="$urladd" string2="$defaultretry" out-string="$urladd"/> 
+		</if>
+		<else>
+			<if cond="$appRetry">	
+				<lib-strcat string="$urladd" string2="$appRetry" out-string="$urladd"/> 
+			</if>
+			<else>
+				<lib-strcat string="$urladd" string2="-" out-string="$urladd"/>
+			</else>
+		</else>
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>    
+
+		<lib-strcat string="$urladd" string2="-" out-string="$urladd"/> <!-- Add multi / param6 -->
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		
+		<!-- Add timeout / param7 -->
+		<if cond="$defaultimeout">
+			<lib-strcat string="$urladd" string2="$defaultimeout" out-string="$urladd"/> 
+		</if>
+		<else>
+			<if cond="$appTimeout">	
+				<lib-strcat string="$urladd" string2="$appTimeout" out-string="$urladd"/> 
+			</if>
+			<else>
+				<lib-strcat string="$urladd" string2="-" out-string="$urladd"/>
+			</else>
+		</else>
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		
+		<lib-strcat string="$urladd" string2="-" out-string="$urladd"/> <!-- Add fallback / param8 -->
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		<lib-strcat string="$urladd" string2="-" out-string="$urladd"/> <!-- Add bool / param9 -->
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		<lib-strcat string="$urladd" string2="-" out-string="$urladd"/> <!-- Add bool-not / param10 -->
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		<!--
+		<lib-strcat string="$urladd" string2="$defaultdestinationName" out-string="$urladd"/> 
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		<lib-strcat string="$urladd" string2="$defaultdestinationNumber" out-string="$urladd"/>  
+		<lib-strcat string="$urladd" string2="/" out-string="$urladd"/>
+		-->
+		
+		<dbg string="Add Action: " string2="$urladd" />
+		<exec url="$urladd" />
+		<assign out="$aftercount" value="$count"/> 
+		
+		<!-- Play Notification -->
+		<switch var="$aftercount">
+			<case equal="beforecount">  <!-- No Good -->
+				<lib-strcat string="$langprefix" string2="something_went_wrong.g711a" out-string="$file"/>
+				<store-get root="$lang" name="$file" out-url="$ctrl" />
+				<pbx-prompt url="$ctrl" barge-in="false"/>			
+			</case>
+			<default> 			
+				<!-- Play 'New Wake Up added at' -->
+				<lib-strcat string="$langprefix" string2="wakeup_added_at.g711a" out-string="$file"/>
+				<store-get root="$lang" name="$file" out-url="$ctrl" />
+				<pbx-prompt url="$ctrl" barge-in="false"/>	
+				<!-- Play the WakeUp -->
+				<assign out="$playhour" value="$new-hour"/>
+				<assign out="$playmin" value="$new-min"/>
+				<call name="PlayWakeUp" />
+			</default>
+		</switch>		
+	</function>
+	
+	<function define="AskHour">
+		<!-- Get the Hour -->
+		<event type="dtmf" block="false">
+			<pbx-getdtmfdigit out-dtmf="$dtmf" /> 
+			<switch var="$dtmf">
+				<case equal="#"> <!-- Input ended --> 	 
+					<dbg string="Hour Input Ended: " string2="$new-hour" />
+					<assign out="$hour-ok" value="true"/> 
+				</case>
+				<default> 
+					<lib-strcat string="$new-hour" string2="$dtmf" out-string="$new-hour"/>
+					<dbg string="Hour Input: " string2="$new-hour" />
+					
+					<!-- Play some Silence -->
+					<store-get root="$lang" name="silence.g711a" out-url="$ctrl" /> 
+					<pbx-prompt url="$ctrl" sec="4" repeat="true" />
+				</default>
+			</switch>
+		</event>
+		
+		<while notcond="$hour-ok">	
+			<!-- Play Instruction to enter the hour-part -->
+			<lib-strcat string="$langprefix" string2="enter_hour.g711a" out-string="$file"/>
+			<store-get root="$lang" name="$file" out-url="$ctrl" />
+			<pbx-prompt url="$ctrl" barge-in="false"/>
+			
+			<!-- Play 'end with a hash' -->
+			<lib-strcat string="$langprefix" string2="end_with_hash.g711a" out-string="$file"/>
+			<store-get root="$lang" name="$file" out-url="$ctrl" />
+			<pbx-prompt url="$ctrl" barge-in="false"/>
+			
+			<!-- Play some Silence -->
+			<store-get root="$lang" name="silence.g711a" out-url="$ctrl" /> 
+			<pbx-prompt url="$ctrl" sec="4" repeat="true" /> 
+		</while>
+	</function>
+	
+	<function define="AskMinutes">
+		<!-- Get the Minutes -->
+		<event type="dtmf" block="false">
+			<pbx-getdtmfdigit out-dtmf="$dtmf" /> 
+			<switch var="$dtmf">
+				<case equal="#"> <!-- Input ended --> 	 				
+					<dbg string="Minutes Input Ended: " string2="$new-min" />
+					<assign out="$min-ok" value="true"/> 
+				</case>
+				<default> 
+					<lib-strcat string="$new-min" string2="$dtmf" out-string="$new-min"/>
+					<dbg string="Minutes Input: " string2="$new-min" />
+					
+					<!-- Play some Silence -->
+					<store-get root="$lang" name="silence.g711a" out-url="$ctrl" /> 
+					<pbx-prompt url="$ctrl" sec="4" repeat="true" />
+				</default>
+			</switch>
+		</event>
+		
+		<while notcond="$min-ok">	
+			<!-- Play Instruction to enter the Minutes-part -->
+			<lib-strcat string="$langprefix" string2="enter_minutes.g711a" out-string="$file"/>
+			<store-get root="$lang" name="$file" out-url="$ctrl" />
+			<pbx-prompt url="$ctrl" barge-in="false"/>
+			
+			<!-- Play 'end with a hash' -->
+			<lib-strcat string="$langprefix" string2="end_with_hash.g711a" out-string="$file"/>
+			<store-get root="$lang" name="$file" out-url="$ctrl" />
+			<pbx-prompt url="$ctrl" barge-in="false"/>
+			
+			<!-- Play some Silence -->
+			<store-get root="$lang" name="silence.g711a" out-url="$ctrl" /> 
+			<pbx-prompt url="$ctrl" sec="4" repeat="true" /> 
+		</while>
+	</function>
+
+	<function define="RemWakeUp">
+		<!-- Delete the WakeUp at the given wakeup_index -->
+		<lib-strcat string="$baseurlrem" string2="$wakeup_index" out-string="$urlrem"/>
+		<lib-strcat string="$urlrem" string2="/" out-string="$urlrem"/>
+		<dbg string="Rem Action: " string2="$urlrem" />
+		<exec url="$urlrem" />
+		<assign out="$aftercount" value="$count"/> 		
+		
+		<!-- Play Notification -->
+		<switch var="$aftercount">
+			<case equal="beforecount">  <!-- No Good -->
+				<lib-strcat string="$langprefix" string2="something_went_wrong.g711a" out-string="$file"/>
+				<store-get root="$lang" name="$file" out-url="$ctrl" />
+				<pbx-prompt url="$ctrl" barge-in="false"/>			
+			</case>
+			<default>
+				
+			</default>
+		</switch>	
+		
+		<lib-strcat string="$langprefix" string2="removed.g711a" out-string="$file"/>
+		<store-get root="$lang" name="$file" out-url="$ctrl" />
+		<pbx-prompt url="$ctrl" barge-in="false"/>	
+	</function>
+
+	<function define="Main">
+		<call name="Settings"/>
+		<call name="GetQueryStringParameters" />
+		<call name="GetSetLanguage"/>
+	
+		<!-- Get the Calling Party -->
+		<pbx-getcallinfo out-cgpn="$cgpn" out-h323="$cgpnh323" out-sip="$out-sip" />
+		<dbg string="Call Info (CGPN): " string2="$cgpn"/>
+		<dbg string="Call Info (H323): " string2="$cgpnh323"/>
+		<pbx-finduser-h323 h323="$cgpnh323" out-cn="$cgpncn"/>
+		<dbg string="Call Info (CN): " string2="$cgpncn"/>
+		
+		<!-- Play Welcome -->
+		<lib-strcat string="$langprefix" string2="welcome.g711a" out-string="$file"/>
+		<store-get root="$lang" name="$file" out-url="$ctrl" />
+		<pbx-prompt url="$ctrl" barge-in="false"/>	
+		
+		<!-- Get Number of configured WakeUps -->
+		<call name="PrepareBaseUrl" />
+		<call name="GetAppDefaultSettings"/>
+		<exec url="$baseurlget" />	
+		
+		<dbg string="Number of WakeUps: " string2="$count"/>
+		<assign out="$beforecount" value="$count"/> 
+		<switch var="$count">
+			<case equal="0">
+				<call name="MenuWithoutWakeUp" />				
+			</case>
+			<case greater="0">
+				<call name="MenuWithWakeUp" />
+			</case>
+		</switch>
+		
+		<!-- Play Goodbye -->
+		<lib-strcat string="$langprefix" string2="goodbye.g711a" out-string="$file"/>
+		<store-get root="$lang" name="$file" out-url="$ctrl" />
+		<pbx-prompt url="$ctrl" barge-in="false"/>
+		
+		<pbx-disc cause="16"/>
+	</function>
+		
+</voicemail>
