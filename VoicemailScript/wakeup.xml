@@ -6,7 +6,7 @@
 		<dbg string="Default Language: " string2="$defaultlang"/>
 		
 		<!-- Base URL for the 'innowakeup'-app -->
-		<assign out="$serviceurl" value="https://172.16.21.221/WakeUp/WakeUp/wakeupservice/"/>
+		<assign out="$serviceurl" value="https://app_platform/domain/wakeupservice/wakeupservice/"/>
 		<dbg string="Service URL: " string2="$serviceurl"/>
 		
 		<!-- WakeUp default Settings (will override the ones from the app) -->
@@ -189,8 +189,19 @@
 	
 	<!-- Play the Wakeup Time -->
 	<function define="PlayWakeUp">
+		<!-- Correct the Hour (remove leading 0) --> 
+		<assign out="$number" value="$playhour" />
+		<call name="CorrectNumber"/>
+		<assign out="$playhour" value="$number" />
+		
+		<!-- Correct the Minute (remove leading 0) -->
+		<assign out="$number" value="$playmin" />
+		<call name="CorrectNumber"/>
+		<assign out="$playmin" value="$number" />		
+	
 		<!-- Play the Hour-part -->
 		<dbg string="Hour: " string2="$playhour" />
+		
 		
 		<lib-strcat string="$langprefix" string2="$playhour" out-string="$file"/>
 		<lib-strcat string="$file" string2=".g711a" out-string="$file"/>
@@ -204,6 +215,29 @@
 		<lib-strcat string="$file" string2=".g711a" out-string="$file"/>
 		<store-get root="$lang" name="$file" out-url="$ctrl" />
 		<pbx-prompt url="$ctrl" barge-in="false"/>	
+	</function>
+	
+	<function define="CorrectNumber">
+		<!-- Correct the $number -->
+		<!-- Get the length of the number -->
+		<lib-strlen out="$number-length" string="$number"/>
+		<dbg string="Length of $number:" string2="$number-length" />
+		
+		<!-- Correction only needed if number is of length 2 -->
+		<switch var="$number-length">
+			<case equal="2"> 
+				<!-- Get the first digit of the number -->
+				<index out="$firstDigit" value="$number" pos="1" size="1"/>
+				
+				<!-- Remove the first digit if it's 0 -->
+				<switch var="$firstDigit">
+					<case equal="0"> 
+						<sub value="$number-length" value2="1" out="$number-newlength" /> 
+						<index out="$number" value="$number" pos="2" size="$number-newlength"/>
+					</case>
+				</switch>
+			</case>
+		</switch>
 	</function>
 	
 	<function define="AddWakeUp">
